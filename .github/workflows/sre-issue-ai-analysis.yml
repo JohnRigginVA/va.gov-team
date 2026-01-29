@@ -61,7 +61,7 @@ jobs:
 
       - name: Prepare issue content
         if: steps.check.outputs.has_analysis != 'true'
-        run: printf '%s' "$ISSUE_BODY" > "$RUNNER_TEMP/issue-body.txt"
+        run: printf '%s' "$ISSUE_BODY" | sed '2,$s/^/      /' > "$RUNNER_TEMP/issue-body.txt"
         env:
           ISSUE_BODY: ${{ steps.issue.outputs.body }}
 
