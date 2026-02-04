@@ -113,6 +113,8 @@ tags:
 _This is a User Acceptance Test (UAT) as a follow-up from the Usability Test of [Overpayments and Copayments on mobile app](https://github.com/department-of-veterans-affairs/va.gov-team/blob/master/products/combined_va_debt_portal/mobile/research-plan.md?plain=1)._
 _Overpayments will be the first section to be released in the mobile app. Copays will be released at a later date._
 
+Veterans who have benefit overpayment debt can currently access overpayment information through the authenticated experience on VA.gov. However, the VA mobile app does not currently provide debt-related information or actions. This release introduces **Overpayments** as the first debt capability in the mobile app (Copays will be released separately at a later date).
+
 Veterans can experience debt from the VA. The two types of debt that the Financial Management Team has focused on include: 
 
 * Overpayments   
@@ -132,7 +134,7 @@ Veterans can view their overpayment and copayment debts through the authenticate
 
 `What problem is your product trying to solve?`
 
-The mobile app does not have any debt-related information for Veterans to access. How might we provide Veterans with the ability to view the total amount owed for benefit overpayment debts, as well as the details related to that debt on the mobile app?  
+This UAT is focused on release readiness: confirming that the Overpayments experience displays correct information for real users and that all screens, navigation, and external handoffs perform as expected in a pre-release build.
   
 `Where is your product situated on VA.gov? (ex: auth vs. unauth)`
 
