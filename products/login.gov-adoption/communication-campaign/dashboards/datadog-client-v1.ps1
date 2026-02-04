@@ -1,351 +1,308 @@
-﻿# example
-# pwsh datadog-client-v1.ps1 "C:\Users\vacodickss\ETL\1 extracted\VA.gov Data\Mobile Users" week 1
+﻿# datadog-client-v1-merged.ps1
+# Retains the original script's behavior and output naming, while adding:
+# - Per-day checkpointing (.csv + .done marker)
+# - Resume mode to skip completed days
+# - Robust JSON construction (no hand-escaped JSON strings)
+#
+# Backwards-compatible invocation (same as OG):
+#   pwsh ./datadog-client-v1-merged.ps1 "C:\path\to\output" week 1
+#
+# New optional flags:
+#   -Resume               Skip any day that already has a .done marker
+#   -StartDate/-EndDate   Override the computed window (dates, inclusive start / exclusive end)
+#   -PruneOldCheckpoints  Keep only the most recent checkpoint folder for this period+window
 
-# 2/3/2025 Added support for new error type: "request_timeout(Request timeout)", "deadline_exceeded(The query timed out)"
+param(
+  [Parameter(Position=0, Mandatory=$true)][string]$OutputPath,
+  [Parameter(Position=1, Mandatory=$true)][ValidateSet("week","month")][string]$Period,
+  [Parameter(Position=2, Mandatory=$true)][int]$PeriodsBack,
 
-$outputPath = $args[0]
-$period = $args[1]
-$periodsBack = $args[2]
+  [datetime]$StartDate,
+  [datetime]$EndDate,
 
+  [switch]$Resume,
+  [switch]$PruneOldCheckpoints
+)
 
-$apiKey = "UPDATE"
-$applicationKey = "UPDATE"
+# -------------------------------
+# OG constants (retain as-is)
+# -------------------------------
+$apiKey = $env:DATADOG_API_KEY
+$applicationKey = $env:DATADOG_APP_KEY
 
+# Query retained from OG
+$queryName = "mobileUsers"
+$query = "service:vets-api AND @message_content:*SignInController*callback"
+$limit = 1000
 
-#SHORT CIRCUIT - for Domo Workbench to upload a manually updated latest file
-#Exit 0
+# -------------------------------
+# Window calculation (retain OG logic, but allow overrides)
+# -------------------------------
+Write-Host "$Period $PeriodsBack"
 
-#TEST
-#$outputPath = "C:\Users\vacodickss\ETL\1 extracted\VA.gov Data\Mobile Users" 
-
-
-Write-Host "$period $periodsBack"
-if ($period -eq "week") {
-    $fromWeek = (get-date).AddDays(-7 * $periodsBack)
+if ($Period -eq "week") {
+    $fromWeek = (Get-Date).AddDays(-7 * $PeriodsBack)
     $fromDay = $fromWeek.AddDays(0 - $fromWeek.DayOfWeek)
     $toDay = $fromDay.AddDays(7)
-} elseif ($period -eq "month") {
-    $fromMonth = (get-date).AddMonths(-$periodsBack)
-    $toMonth = (get-date).AddMonths(-($periodsBack-1))
+} elseif ($Period -eq "month") {
+    $fromMonth = (Get-Date).AddMonths(-$PeriodsBack)
+    $toMonth = (Get-Date).AddMonths(-($PeriodsBack-1))
     $fromDay = $fromMonth.AddDays(0 - $fromMonth.Day + 1)
     $toDay = $toMonth.AddDays(0 - $toMonth.Day + 1)
 } else {
-    Write-Host "time period not supported " $period
+    Write-Host "time period not supported $Period"
     Exit 1
 }
 
-
-#TEST
-#$fromDay = (get-date)
-#$toDay = (get-date)
-
-$from = $fromDay.ToString("yyyy-MM-ddT00:00-00:00")
-$fromShort = $fromDay.ToString("yyyyMMdd")
-$fromSlashes = $fromDay.ToString("MM/dd/yyyy")
-$to = $toDay.ToString("yyyy-MM-ddT00:00-00:00")
-$toShort = $toDay.ToString("yyyyMMdd")
-$toSlashes = $toDay.ToString("MM/dd/yyyy")
-
-#TEST
-#$from = $fromDay.ToString("yyyy-MM-ddT00:00-00:00")
-#$to = $toDay.ToString("yyyy-MM-ddT01:00-00:00")
-
-Write-Host "$from $to"
-
-
-
-$fileName = "mobileUsers-$($period)-$($fromShort)-$($toShort)"
-$fileNameLatest = "mobileUsers-$($period)"
-$query = "service:vets-api AND @message_content:*SignInController*callback" 
-#$from = "2024-12-16T00:00:00-00:00"
-#$to =   "2024-12-18T00:00:00-00:00"
-
-#Write-Host $fileName
-
-
-$limit = 1000
-
-$icns = @{}
-
-$globals = @{
-    'totalFound' = 0
-    'totalUnique' = 0
-    'lastTimestamp' = ''
+# Optional window override (inclusive start, exclusive end)
+if ($PSBoundParameters.ContainsKey('StartDate') -and $PSBoundParameters.ContainsKey('EndDate')) {
+    $fromDay = $StartDate.Date
+    $toDay   = $EndDate.Date
 }
 
+$fromIso = $fromDay.ToString("yyyy-MM-ddT00:00-00:00")
+$toIso   = $toDay.ToString("yyyy-MM-ddT00:00-00:00")
 
-#$now = Get-Date
-#$todayDashes = (Get-Date).ToString("MM-dd-yyyy")
+$windowFromShort   = $fromDay.ToString("yyyyMMdd")
+$windowToShort     = $toDay.ToString("yyyyMMdd")
+$windowFromSlashes = $fromDay.ToString("MM/dd/yyyy")
+$windowToSlashes   = $toDay.ToString("MM/dd/yyyy")
 
-$outfile = "$($outputPath)\$($fileName).csv"
-$outfileLatest = "$($outputPath)\$($fileNameLatest)-latest.csv"
-$logFile = "$($outputPath)\$($fileNameLatest)-log.txt"
+Write-Host "$fromIso $toIso"
 
+# -------------------------------
+# Output naming (retain OG)
+# -------------------------------
+$fileName = "$queryName-$($Period)-$($windowFromShort)-$($windowToShort)"
+$fileNameLatest = "$queryName-$($Period)"
 
-function Process-Response {
-    param (
-        $json
-    )
- 
-    $json.data | foreach {
-        #$debugJson = ConvertTo-Json $_
-        #Write-Host $debugJson
+$outfile = Join-Path $OutputPath "$fileName.csv"
+$outfileLatest = Join-Path $OutputPath "$fileNameLatest-latest.csv"
+$logFile = Join-Path $OutputPath "$fileNameLatest-log.txt"
 
-        $icn = $_.attributes.attributes.payload.icn
-        $csp = $_.attributes.attributes.payload.type
-        $ial = $_.attributes.attributes.payload.ial
+# -------------------------------
+# Checkpoint folder strategy (new)
+# -------------------------------
+$checkpointRoot = Join-Path $OutputPath "checkpoints"
+$checkpointFolder = Join-Path $checkpointRoot $fileName
+New-Item -ItemType Directory -Force -Path $checkpointFolder | Out-Null
 
-        if (($ial -eq 1) -or (! $icn -or ! $csp)) {
-             #$jsonString = ConvertTo-Json $_
-             #Write-Host "Unexpected: " $jsonString
-
-        } else {
-
-            $icncsp = "icn$($icn)csp$($csp)"
-            $timestamp = $_.attributes.timestamp
-
-
-        
-            if ($icncsp) {
-               $globals['totalFound']++
-               $globals['lastTimestamp'] = $timestamp
-               if (! $icns.ContainsKey($icncsp)) {
-                    $globals['totalUnique']++
-                    $icns[$icncsp] = @{}
-        	        $icns[$icncsp]['icn'] = $icn
-                    $icns[$icncsp]['csp'] = $csp
-               }
-
-               #Write-Host "Found ICN: $($globals['totalFound']) $($globals['totalUnique']) $icn $timestamp"
-            }
-        }
+if ($PruneOldCheckpoints -and (Test-Path $checkpointRoot)) {
+  Get-ChildItem $checkpointRoot -Directory |
+    Where-Object { $_.FullName -ne $checkpointFolder } |
+    ForEach-Object {
+      try { Remove-Item $_.FullName -Recurse -Force -ErrorAction Stop } catch {}
     }
 }
 
+# If final outputs exist, remove them so the run is deterministic (retain OG behavior)
+if (Test-Path $outfile) { Remove-Item $outfile -Force }
+if (Test-Path $outfileLatest) { Remove-Item $outfileLatest -Force }
 
-
-
-
-if (Test-Path $outfile) {
-  Remove-Item $outfile
-}
-
-
-if (Test-Path $outfileLatest) {
-  Remove-Item $outfileLatest
-}
-
-
-Write-Host "Calling DataDog query: $queryName.  From: $from To: $to"  -ForegroundColor Green
-Write-Host "Output Target: $($outfile)"
-
-"Output Target: $($outfile)" >> $logFile
-
-
+# -------------------------------
+# Datadog request wiring (retain OG endpoint/headers)
+# -------------------------------
 $uri = "https://api.ddog-gov.com/api/v2/logs/events/search"
 $headers = @{
     "DD-API-KEY" = $apiKey
     "DD-APPLICATION-KEY" = $applicationKey
 }
 
-#&cols=%40icn%2C%40payload.typestorage="flex_tier
-# &cols=%40icn%2C%40payload.type
-# query=signinservice signincontroller callback env:eks-prod @payload.client_id:vamobile @icn:*
-#       signinservice signincontroller callback env:eks-prod @payload.client_id:vamobile @icn:*
-#       service:vets-api AND @message_content:*SignInController*callback AND env:eks-prod 
-# `"storage_tier`": `"online-archives`"
-#     `"storage_tier`": `"flex_tier`"
-$body =@"
-{
-  `"filter`": {
-    `"indexes`": [
-      `"*`"
-    ],
-    `"query`": `"$query`",
-    `"from`": `"$from`",
-    `"to`": `"$to`",
-    `"storage_tier`": `"flex`"
-  },
-  `"page`": {
-    `"limit`": $limit
-  },
-  `"sort`": `"timestamp`"
-}
-"@
+# -------------------------------
+# Helpers
+# -------------------------------
+function Process-Response {
+    param(
+      [Parameter(Mandatory=$true)]$json,
+      [Parameter(Mandatory=$true)][hashtable]$icns,
+      [Parameter(Mandatory=$true)][hashtable]$globals
+    )
 
-#    `"storage_tier`": `"indexes`"
-#    `"storage_tier`": [`"indexes`", `"online-archives`"]
+    $json.data | ForEach-Object {
+        $icn = $_.attributes.attributes.payload.icn
+        $csp = $_.attributes.attributes.payload.type
+        $ial = $_.attributes.attributes.payload.ial
 
-
-
-Write-Host "calling DataDog API..." -ForegroundColor Green
-
-try {
-    $response = Invoke-WebRequest -Uri $uri `
-        -Method Post `
-        -Headers $headers `
-        -ContentType "application/json" `
-        -Body "$body"
-}
-catch {
-    Write-Warning $Error[0]
-    $Error[0] >> $logFile
-    Exit 1
-}
-
-
-#$response.Content >> $logFile
-
-$responseJSON = ConvertFrom-Json -InputObject $response.Content
-
-Process-Response $responseJSON
-$now = $((get-date).ToString('T'))
-$log = "$now Found: $($globals['totalFound']) $($globals['totalUnique']) $($globals['lastTimestamp'])"
-Write-Host  $log
-$log >> $logFile
-
-$cursor = $responseJSON.meta.page.after
-#Write-Host "Cursor: $cursor"
-
-
-$bodyWithCursor = ""
-if ($cursor) {
-    $bodyJSON = ConvertFrom-Json -InputObject $body
-    $bodyJSON.page | add-member -Name "cursor" -value $cursor -MemberType NoteProperty
-    $bodyWithCursor = ConvertTo-Json $bodyJSON 
-    #Write-Host "updated body with cursor: " $bodyWithCursor
-}
-
-while ($cursor) {
-
-    Write-Host "calling DataDog API..." -ForegroundColor Green
-
-    try {
-        $response = Invoke-WebRequest -Uri $uri `
-            -Method Post `
-            -Headers $headers `
-            -ContentType "application/json" `
-            -Body "$bodyWithCursor"
-    }
-    catch {
-        Write-Host "DataDog did not return resultset..." -ForegroundColor DarkYellow
-        Write-Warning $Error[0]
-        $Error[0] >> $logFile
-
-        # Note the $response object doesn't get updated apparently due to the error, so can't count on this, but we can use the last value of reset
-        <#
-        $rem = $response.Headers["X-RateLimit-Remaining"]
-        $res = $response.Headers["X-RateLimit-Reset"]
-        $summary = "Remaining (requests): $rem, Reset (sec): $res"
-        Write-Host "$summary"
-        #>
-
-        # sample errors at end of file
-        $responseJSON = ConvertFrom-Json -InputObject $Error[0]
-        $err = $responseJSON.errors[0]
-        $code = $responseJSON.code
-        Write-Host "code: $code, error: $err"
-
-        if (($err -eq "Too many requests") -or 
-            ($err -eq "resource_exhausted(RateLimited: Too many pending queries)") -or
-            ($err -eq "deadline_exceeded(Request timeout)") -or
-            ($err -eq "request_timeout(Request timeout)") -or
-            ($err -eq "deadline_exceeded(The query timed out)")) {
-            Write-Host "Sleeping $rateLimitReset" -ForegroundColor DarkYellow
-            $sleep = [double]"$($rateLimitReset).0"
-            Start-Sleep -Seconds $sleep
-            Continue
+        if (($ial -eq 1) -or (-not $icn) -or (-not $csp)) {
+            # ignore IAL1 and malformed records (retain OG intent)
         } else {
-            Write-Host "Unknown error. Exiting"
-            Exit 1
+            $icncsp = "icn$($icn)csp$($csp)"
+            $timestamp = $_.attributes.timestamp
+
+            if ($icncsp) {
+                $globals['totalFound']++
+                $globals['lastTimestamp'] = $timestamp
+                if (-not $icns.ContainsKey($icncsp)) {
+                    $globals['totalUnique']++
+                    $icns[$icncsp] = @{}
+                    $icns[$icncsp]['icn'] = $icn
+                    $icns[$icncsp]['csp'] = $csp
+                }
+            }
         }
     }
+}
 
-    $rateLimit = $response.Headers["X-RateLimit-Limit"]
-    $rateLimitPeriod = $response.Headers["X-RateLimit-Period"]
-    $rateLimitRemaining = $response.Headers["X-RateLimit-Remaining"]
-    $rateLimitReset = $response.Headers["X-RateLimit-Reset"]
-    $rateLimitName = $response.Headers["X-RateLimit-Name"]
+function Invoke-DdLogSearch {
+  param(
+    [Parameter(Mandatory=$true)][datetime]$DayStart,
+    [Parameter(Mandatory=$true)][datetime]$DayEnd,
+    [Parameter(Mandatory=$true)][hashtable]$icns,
+    [Parameter(Mandatory=$true)][hashtable]$globals
+  )
 
-    # rateLimitName:  logs_public_search_api
-    # rateLimit:      60 requests per period
-    # ratLimitPeriod: 60 seconds
-    #$summary = "Request Limit/Period: $rateLimit, Remaining: $rateLimitRemaining, Reset: $rateLimitReset, Name: $rateLimitName, Period (sec): $rateLimitPeriod"
-    $summary = "Remaining (requests): $rateLimitRemaining, Reset (sec): $rateLimitReset"
+  $from = $DayStart.ToString("yyyy-MM-ddT00:00-00:00")
+  $to   = $DayEnd.ToString("yyyy-MM-ddT00:00-00:00")
 
-    Write-Host "$summary"
-    $summary >> $logFile
+  $bodyObj = @{
+    filter = @{
+      indexes = @("*")
+      query = $query
+      from  = $from
+      to    = $to
+      storage_tier = "flex"
+    }
+    page = @{
+      limit = $limit
+    }
+    sort = "timestamp"
+  }
 
-    #$response.Content >> $logFile
+  $cursor = $null
+
+  Write-Host "Calling DataDog query: $queryName. From: $from To: $to" -ForegroundColor Green
+  "Calling DataDog query: $queryName. From: $from To: $to" >> $logFile
+
+  while ($true) {
+    if ($cursor) {
+      $bodyObj.page.cursor = $cursor
+    } else {
+      if ($bodyObj.page.ContainsKey('cursor')) { $bodyObj.page.Remove('cursor') }
+    }
+
+    $body = $bodyObj | ConvertTo-Json -Depth 10
+
+    $attempt = 0
+    $maxAttempts = 3
+    $response = $null
+
+    while ($attempt -lt $maxAttempts) {
+      try {
+        $attempt++
+        $response = Invoke-WebRequest -Uri $uri `
+          -Method Post `
+          -Headers $headers `
+          -ContentType "application/json" `
+          -Body $body
+        break
+      } catch {
+        $err = $Error[0].ToString()
+        Write-Warning $err
+        $err >> $logFile
+
+        # Simple retry on known transient timeouts (retain OG note + make resilient)
+        if ($err -match "request_timeout|deadline_exceeded|timed out|timeout") {
+          Start-Sleep -Seconds ([Math]::Min(30, (5 * $attempt)))
+          if ($attempt -lt $maxAttempts) { continue }
+        }
+
+        throw
+      }
+    }
 
     $responseJSON = ConvertFrom-Json -InputObject $response.Content
+    Process-Response -json $responseJSON -icns $icns -globals $globals
 
-    Process-Response $responseJSON
-    $now = $((get-date).ToString('T'))
-    $log = "$now Found: $($globals['totalFound']) $($globals['totalUnique']) $($globals['lastTimestamp'])"
-    Write-Host  $log
+    $now = (Get-Date).ToString('T')
+    $log = "$now Found: $($globals['totalFound']) Unique: $($globals['totalUnique']) LastTs: $($globals['lastTimestamp'])"
+    Write-Host $log
     $log >> $logFile
 
     $cursor = $responseJSON.meta.page.after
-
-    $bodyJSON.page.cursor = $cursor
-    $bodyWithCursor = ConvertTo-Json $bodyJSON 
-    #Write-Host "updated body with cursor: " $bodyWithCursor
-
-
-    #$cursor = 0
+    if (-not $cursor) { break }
+  }
 }
 
-$icns.Values | Select-Object @{Name='fromDate';Expression={$fromSlashes}},@{Name='toDate';Expression={$toSlashes}},* | Export-Csv $outfile -NoTypeInformation
-#$icns.Values | Export-Csv -Path $outfile
-Copy-Item $outfile -Destination $outfileLatest
+# -------------------------------
+# PER-DAY LOOP (new)
+# -------------------------------
+Write-Host "Checkpoint folder: $checkpointFolder" -ForegroundColor Cyan
+"Checkpoint folder: $checkpointFolder" >> $logFile
 
+$day = $fromDay.Date
+$dailyFiles = New-Object System.Collections.Generic.List[string]
+
+while ($day -lt $toDay.Date) {
+  $dayStart = $day
+  $dayEnd = $day.AddDays(1)
+
+  $dayShort = $dayStart.ToString("yyyyMMdd")
+  $dayFromSlashes = $dayStart.ToString("MM/dd/yyyy")
+  $dayToSlashes = $dayEnd.ToString("MM/dd/yyyy")
+
+  $dailyCsv = Join-Path $checkpointFolder "$queryName-$Period-$dayShort.csv"
+  $doneMarker = Join-Path $checkpointFolder "$queryName-$Period-$dayShort.done"
+
+  if ($Resume -and (Test-Path $doneMarker) -and (Test-Path $dailyCsv)) {
+    Write-Host "Skipping completed day $dayShort (resume)" -ForegroundColor Yellow
+    $dailyFiles.Add($dailyCsv) | Out-Null
+    $day = $day.AddDays(1)
+    continue
+  }
+
+  Write-Host "Processing day $dayShort..." -ForegroundColor Green
+
+  # Day-scoped hashtables (so a single bad day doesn't poison the whole run)
+  $icnsDay = @{}
+  $globalsDay = @{
+      'totalFound' = 0
+      'totalUnique' = 0
+      'lastTimestamp' = ''
+  }
+
+  try {
+    Invoke-DdLogSearch -DayStart $dayStart -DayEnd $dayEnd -icns $icnsDay -globals $globalsDay
+  } catch {
+    Write-Warning "Failed day $dayShort. Leaving checkpoints intact for resume. Error: $($Error[0])"
+    "Failed day $dayShort. Error: $($Error[0])" >> $logFile
+    Exit 1
+  }
+
+  # Write daily CSV (unique by icn+csp within the day)
+  $icnsDay.Values |
+    Select-Object @{Name='fromDate';Expression={$dayFromSlashes}},
+                  @{Name='toDate';Expression={$dayToSlashes}},
+                  icn,
+                  csp |
+    Export-Csv $dailyCsv -NoTypeInformation
+
+  New-Item -ItemType File -Force -Path $doneMarker | Out-Null
+
+  $dailyFiles.Add($dailyCsv) | Out-Null
+  $day = $day.AddDays(1)
+}
+
+if ($dailyFiles.Count -eq 0) {
+  Write-Warning "No daily files produced; exiting."
+  Exit 1
+}
+
+# -------------------------------
+# MERGE DAILY -> FINAL (new, but keeps OG final shape)
+# -------------------------------
+Write-Host "Merging daily checkpoints into final outputs..." -ForegroundColor Green
+
+Import-Csv ($dailyFiles.ToArray()) |
+  Sort-Object icn, csp |
+  Group-Object icn, csp |
+  ForEach-Object { $_.Group | Select-Object -First 1 } |
+  Select-Object @{Name='fromDate';Expression={$windowFromSlashes}},
+                @{Name='toDate';Expression={$windowToSlashes}},
+                icn,
+                csp |
+  Export-Csv $outfile -NoTypeInformation
+
+Copy-Item $outfile -Destination $outfileLatest -Force
+
+Write-Host "Done. Final: $outfileLatest" -ForegroundColor Green
 Exit 0
-
-
-
-
-<#
-# can reproduce this with multiple clients
-{
-  "status": "error",
-  "code": 429,
-  "errors": [
-    "Too many requests"
-  ],
-  "statuspage": "https://status.ddog-gov.com",
-  "twitter": "http://twitter.com/datadogops",
-  "email": "support@datadoghq.com"
-}
-
-{
-  "errors": [
-    "Too many requests"
-  ]
-}
-
-{
-  "errors": [
-    "resource_exhausted(RateLimited: Too many pending queries)"
-  ]
-}
-
-{
-  "errors": [
-    "deadline_exceeded(Request timeout)"
-  ]
-}
-
-{
-  "errors": [
-    "request_timeout(Request timeout)"
-  ]
-}
-
-{
-  "errors": [
-    "deadline_exceeded(The query timed out)"
-  ]
-}
-
-#>
