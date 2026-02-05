@@ -1,101 +1,218 @@
-
 # Product Outline 
 
+# Enable Self-Service Access to Medallia Qualitative Data
 
-## Overview
-Veteran Readiness and Employment (VR&E) services are vital for Veterans with service-connected disabilities who are seeking employment and independent living. The RES-powered VR&E portal integrated within VA.gov directly addresses key usability and accessibility issues, transforming VA.gov into a personalized gateway for Veterans to determine eligibility, apply for benefits, and track their progress throughout the program lifecycle. This will provide a self-service case management hub that will allow Veterans to manage the full lifecycle of their VR&E journey. The Veteran will have capabilities from eligibility determination to comprehensive case management, including a Case Progress tracker, orientation tools, scheduling, VBMS upload functionality, and a career planning page. 
+# 1. Overview
+Product teams across VA.gov frequently request qualitative feedback data from Medallia to understand Veteran experience, validate hypotheses, and support product decisions. Today, these requests are often fulfilled manually by Veteran Support, creating delays, rework, and unnecessary dependency. The demand for qualitative and quantitative Medallia data is expected to increase as several of the new VES OKRs relate to tracking and measuring CSAT as well as generating a Veterans’ pain points list:
 
-## Problem Statement
-As a Veteran, I want to manage the full lifecycle of my VR&E journey. As a Backend Developer I want to ensure each page operates is error-free and renders correctly, and pulls data users expect to see. As a Frontend Developer I want to see the pages to chose from so users can access the information they need and perform actions as needed. As a UX Designer I want to confirm that users are able to navigate the self-management portal with little-to-no errors so that they can access the information they need and perform actions as needed. By creating a new page the Reapers team can ensure users have easy access to information and comply with CAIA guidelines.
- 
-## Desired User Outcomes
+•	KR 3.1 – 100% of VES products document a ranked list of Veteran pain points (problems) and unmet needs and quantify to what extent the need is currently met. (e.g., via impact and volume) 
 
-- *Why would a user want to use this?* The self-management portal will allow the Veteran to manage the full lifecycle of their VR&E journey. The Veteran will have access to orientation tools, scheduling, VBMS uploads, and a career planning module.
-- *With this problem solved, what should users be able to do/achieve that they couldn't before?* The Veteran will be able to view real-time updates and status information on their VR&E cases. Tools and resources will also be available to help Veterans understand and navigate the VR&E program, including guides, tutorials, and informational content.
+•	KR 3.2 – 100% of VES products measure and set a baseline for customer satisfaction (CSAT) and/or customer dissatisfaction (DSAT)
 
-## Undesired User Outcomes
-Veterans are unaware of the status of their application/case. Users are unaware of next steps. Unexpected errors or outages.
-
-## Desired Business Outcomes
-
-- *Why would your business want this to exist?* Allows direct communication with the Veteran and provides information to the Veteran with the next steps. This will ultimately create a seamless experience for the Veteran when the Counselor has the information that they need to process a case.
-- *With this problem solved, what should your business be able to do/achieve that they couldn't before?* The self-management portal will allow the Veteran to monitor and manager their VR&E journey. The Veteran will be able to take the appropiate steps to make sure they have provided all necessary information/documentation for their case to be processed.
-
-## Undesired Business Outcomes
-Reapers team does not meet contract timeline. All work must be completed and in production by March 12, 2026.
-
----
-## Measuring Success
-Transform and build on the existing eligibility page on VA.gov into a more interactive and personalized experience for Veterans. Integrate secure RES data Application Programming Interfaces (APIs) to enable real-time interactions with VA.gov. Enhance user experience (UX) components, including case progress tracker, orientation tools and resources, scheduling assistance, career planning module, and other usability improvements to facilitate smoother navigation and better interaction. Develop and implement a user-friendly portal User Interface (UI) that integrates seamlessly with the existing VA.gov infrastructure. Utilize the Single Sign On (SSO) capabilities to streamline the login process and enhance security for users accessing the VR&E portal.
-
-### Key Performance Indicators (KPIs)
-* *What data (qual or quant) will you look at to understand if your initial set of functionality is meeting your desired user and business outcomes, and not bringing about the undesired outcomes?*
-* _What are the most important metrics that track with this product/initiative's success?_
-
-#### Baseline KPI Values
-
-### Objectives and Key results (OKRs)
-Users navigate to the self-management portal and track and interact with their VR&E case journey.
+•	KR 3.3 – 75% of VES products with baseline measurably improve CSAT or DSAT from beginning to end of the OKR period
 
 
-## Solution Approach
+This initiative establishes a self-service model that enables product teams to independently access and analyze Medallia qualitative data, while Veteran Support provides training, documentation, and consultative support when needed.
+The goal is not to remove support—but to shift from fulfillment to enablement.
+________________________________________
+# 2. Problem Statement
 
-- *What are you going to build now, and why have you decided to start there?* Build a case progress tracker. Allow the user to view/schedule their orientation through the self-management portal. Give the Veteran the ability to assess their skills/hobbies to assist with a career plan/benefits.
-- *Why this solution / approach over other solutions / approaches?* This approach is best because it gives the Veteran the ability to monitor their case status and proceed with next steps without major delays.
-- *What have you explicitly decided to not include in this initial set of functionality, and why?*
-- *How will the solution / approach evolve after this initial build (knowing that this will likely change as you learn from users along the way)?*
-- *Does your solution include the VA Health and Benefits mobile application? Explain why or why not.* 
+Product teams need timely access to qualitative feedback, but:
 
+•	Many teams are unaware of what Medallia data is available or how to access it
 
-## Launch Strategy
-- *How are Veterans and others using this product going to know it exists?* Banners throughout the pages Work with VA communications teams
-- *What marketing, outreach, or communications are necessary for this product to be successful?* Will create an updated user guide
+•	Requests are routed through Veteran Support even when self-service is possible
 
-## Launch Dates
-- *Target Launch Date*
-  - March 12, 2026
-- *Actual Launch Date* 
-  - March 12, 2026
-- *What date will you evaluate impact after launch (and when do you expect to have your Impact Review)?* April 2026
+•	There is no standardized training or end-to-end documentation of the Medallia workflow
 
----
+•	The current model does not scale as demand for qualitative insights increases
 
-## Solution Narrative
+As a result, Veteran Support time is spent pulling data that product teams could retrieve themselves, while teams wait longer than necessary for insights.
+________________________________________
+# 3. Core Problem We’re Solving
 
-### Current Status
+Product teams depend on Veteran Support for data access instead of being empowered to self-serve, slowing insight generation and creating unnecessary operational load.
+________________________________________
+# 4. Desired Outcomes
 
-### Key Decisions
+•	Product teams can independently pull Medallia qualitative data for their own analysis
 
----
-   
-## Screenshots
+•	Veteran Support shifts from data fulfillment to training, guidance, and escalation support
 
-### Before
+•	Clear documentation reduces confusion, repeat questions, and ad-hoc requests
 
-### After
+•	Qualitative insights are surfaced faster and used more consistently in product decisions
+ 
+________________________________________
+# 5. Undesired Outcomes (Guardrails)
 
----
+•	Product teams misinterpreting data due to lack of context or training
 
-#### Communications
+•	Self-service being perceived as “you’re on your own”
 
-<details>
+•	Veteran Support losing visibility into how qualitative data is being used 
 
-- Team Name: Reapers
-- GitHub Label: 
-- Slack channel: 
-- Product POCs: Sunna Bennett, Robert Allender, Donna Robinson
-- Stakeholders: Sunna Bennett, Robert Allender, Donna Robinson
+•	Increased noise or low-quality analysis due to lack of standards
+________________________________________
+# 6. Solution Components
 
-</details>
+# A. Self-Service Data Access Model
+
+•	Define which Medallia data sets are appropriate for self-service
+
+•	Clarify what still requires Veteran Support involvement (e.g., complex analysis, cross-survey synthesis, escalations)
+
+•	Establish a lightweight request path for exceptions
+________________________________________
+# B. Training Enablement (Encourage Self-Service First)
+
+Create a structured training that:
+
+•	Encourages teams to pull their own data
+
+•	Reinforces that Veteran Support is still available as a partner
+
+# Training Types
+•	Live walkthrough (recorded)
+
+•	Optional office hours / consultation sessions
+
+# Training Audience
+
+•	VA.gov Product Managers and product owners
+
+•	Designers and Researchers
+
+•	Internal Veteran Support team (for consistency and backup)
+________________________________________
+
+# C. Documentation (End-to-End Process)
+
+Create a clear, durable process guide that includes:
+
+•	Systems involved (e.g., Medallia, dashboards, internal tools)
+
+•	Naming conventions and survey IDs
+
+•	Step-by-step workflows with screenshots
+
+•	Common pitfalls and FAQs
+
+•	Examples of “good” qualitative pulls
+
+•	When and how to escalate to Veteran Support
+
+This documentation becomes the single source of truth.
+ 
+________________________________________
+# D. Internal Veteran Support Training
+
+Ensure Veteran Support:
+
+•	Understands the self-service model end-to-end
+
+•	Knows when to redirect teams to documentation vs step in
+
+•	Uses consistent language when responding to requests
+
+•	Can coach teams instead of defaulting to fulfillment
+________________________________________
+
+# 7. How We “Market” the Self-Service Model
+
+# Key Messaging
+
+•	“Faster insights, on your timeline”
+
+•	“Self-service first — support when you need it”
+
+•	“Veteran Support as your enablement partner”
+
+# Channels
+
+•	Platform / internal documentation pages
+
+•	Slack announcements with clear next steps
+
+•	Training invitations framed as empowerment, not compliance
+
+# Behavioral Reinforcement
+
+•	Default responses to requests point to self-service resources
+
+•	Templates gently guide teams toward doing it themselves
+
+•	Success stories shared (“Team X pulled their own feedback in 10 minutes”)
+________________________________________
+# 8. Measuring Success
+
+# Adoption Metrics
+
+•	25% of qualitative requests fulfilled via self-service
+
+•	Reduction in manual data pulls by Veteran Support
+
+•	Number of teams trained
+
+# Efficiency Metrics
+
+•	Time to insight for product teams
+
+•	Repeat requests for the same data
+
+# Quality Metrics
+
+•	Feedback from product teams on clarity and usefulness
+
+•	Reduced clarification or rework requests
+ 
+________________________________________
+# 9. Phases of Work
+
+# Phase 1: Define & Align
+
+•	Define self-service boundaries
+
+•	Inventory Medallia data sets
+
+•	Align with stakeholders (including Chante)
+
+# Phase 2: Build Enablement
+
+•	Create training materials
+
+•	Draft documentation with screenshots
+
+•	Pilot with a small set of product teams
+
+# Phase 3: Launch & Reinforce
+
+•	Roll out broadly
+
+•	Host office hours
+
+•	Adjust based on feedback
+
+# Phase 4: Normalize
+
+•	Embed into onboarding and standard workflows
+
+•	Track adoption and refine over time
+________________________________________
+
+# 10. What Success Looks Like
+
+Product teams confidently access qualitative data on their own, Veteran Support spends less time pulling data and more time improving insight quality, and qualitative feedback becomes a routine input into product decisions — not a bottleneck.
 
 #### Team Members
 
 <details>
  
  - DEPO Lead: 
- - PM: Stan Gardner
- - Engineering: Taras Kurilo, Mahfuzul Haque, Seth Solomon, Alvaro Escobar
- - Research/Design: Valentina Wickham
+ - PO: Chante Lantos-Swett
+ - PM: Anita Middleton 
+ - Engineering: Aubrey Arcangel, Elijah Walker 
+ - Research/Design: Camille Green 
  
 </details>
 
