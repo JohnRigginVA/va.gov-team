@@ -21,14 +21,18 @@ param(
   [datetime]$EndDate,
 
   [switch]$Resume,
-  [switch]$PruneOldCheckpoints
+  [switch]$PruneOldCheckpoints,
+
+  [switch]$MergeOnly,
+  [switch]$Workbench
+
 )
 
 # -------------------------------
 # OG constants (retain as-is)
 # -------------------------------
-$apiKey = $env:DATADOG_API_KEY
-$applicationKey = $env:DATADOG_APP_KEY
+$apiKey = 'UPDATE'
+$applicationKey = 'UPDATE'
 
 # Query retained from OG
 $queryName = "mobileUsers"
@@ -70,6 +74,24 @@ $windowToSlashes   = $toDay.ToString("MM/dd/yyyy")
 
 Write-Host "$fromIso $toIso"
 
+function Get-ParentProcessName {
+  try {
+    $currentProcess = Get-WmiObject Win32_Process -Filter "ProcessId = $PID"
+    $parent = Get-WmiObject Win32_Process -Filter "ProcessId = $($currentProcess.ParentProcessId)"
+    if (-not $parent -or -not $parent.Name) { return $null }
+    return $parent.Name.Split('.')[0]
+  } catch {
+    return $null
+  }
+}
+
+$parentProcess = Get-ParentProcessName
+if ($parentProcess -eq "WindowsTerminal") { $parentProcess = "shell" }
+
+$isWorkbench = $Workbench -or ($parentProcess -eq "Workbench")
+Write-Host "Parent Process: $parentProcess"
+Write-Host "Workbench mode: $isWorkbench"
+
 # -------------------------------
 # Output naming (retain OG)
 # -------------------------------
@@ -79,6 +101,32 @@ $fileNameLatest = "$queryName-$($Period)"
 $outfile = Join-Path $OutputPath "$fileName.csv"
 $outfileLatest = Join-Path $OutputPath "$fileNameLatest-latest.csv"
 $logFile = Join-Path $OutputPath "$fileNameLatest-log.txt"
+
+
+# Workbench short-circuit must run BEFORE checkpoints/deletes/api calls
+
+if ($isWorkbench) {
+  Write-Host "Workbench run detected (or -Workbench provided). This script will NOT run Datadog pulls in Workbench." -ForegroundColor Yellow
+
+  if ((Test-Path $outfile) -and (Test-Path $outfileLatest)) {
+    $file1 = Get-Item $outfile
+    $file2 = Get-Item $outfileLatest
+
+    Write-Host "Found $($file1.Name) size=$($file1.Length); $($file2.Name) size=$($file2.Length)"
+
+    if ($file1.Length -gt 0 -and $file2.Length -gt 0 -and $file1.Length -eq $file2.Length) {
+      Write-Host "Files exist and sizes match. Exiting 0 so Workbench can upload." -ForegroundColor Green
+      Exit 0
+    }
+
+    Write-Host "Files exist but are empty or size mismatch. Run from shell first to regenerate." -ForegroundColor Red
+    Exit 1
+  }
+
+  Write-Host "One or both expected outputs are missing. Run from shell first to generate outputs, then rerun Workbench to upload." -ForegroundColor Red
+  Exit 1
+}
+
 
 # -------------------------------
 # Checkpoint folder strategy (new)
@@ -107,6 +155,8 @@ $headers = @{
     "DD-API-KEY" = $apiKey
     "DD-APPLICATION-KEY" = $applicationKey
 }
+
+
 
 # -------------------------------
 # Helpers
@@ -223,6 +273,85 @@ function Invoke-DdLogSearch {
   }
 }
 
+function Merge-DailyCheckpoints {
+  param(
+    [Parameter(Mandatory=$true)][string[]]$DailyFiles,
+    [Parameter(Mandatory=$true)][string]$OutFile,
+    [Parameter(Mandatory=$true)][string]$WindowFromSlashes,
+    [Parameter(Mandatory=$true)][string]$WindowToSlashes,
+    [int]$ProgressEveryNRows = 50000
+  )
+
+  $dedup = @{}  # key: "icn|csp" => first-seen normalized row
+  $totalRows = 0
+  $filesTotal = $DailyFiles.Count
+  $filesDone = 0
+  $lastReportAt = 0
+
+  foreach ($f in $DailyFiles) {
+    $filesDone++
+
+    Write-Progress -Activity "Merging daily checkpoints" `
+      -Status "File $filesDone / $filesTotal: $(Split-Path $f -Leaf)" `
+      -PercentComplete ([int](($filesDone / $filesTotal) * 100))
+
+    if (-not (Test-Path $f)) { continue }
+
+    Import-Csv $f | ForEach-Object {
+      $totalRows++
+
+      $key = "$($_.icn)|$($_.csp)"
+      if (-not $dedup.ContainsKey($key)) {
+        $dedup[$key] = [pscustomobject]@{
+          fromDate = $WindowFromSlashes
+          toDate   = $WindowToSlashes
+          icn      = $_.icn
+          csp      = $_.csp
+        }
+      }
+
+      if ($totalRows -ge ($lastReportAt + $ProgressEveryNRows)) {
+        $lastReportAt = $totalRows
+        Write-Host ("Merge progress: rows read={0:n0}, unique keys={1:n0}" -f $totalRows, $dedup.Count)
+      }
+    }
+  }
+
+  Write-Progress -Activity "Merging daily checkpoints" -Completed
+
+  $dedup.Values |
+    Sort-Object icn, csp |
+    Export-Csv $OutFile -NoTypeInformation
+
+  Write-Host ("Merge complete: rows read={0:n0}, unique={1:n0}, out={2}" -f $totalRows, $dedup.Count, $OutFile) -ForegroundColor Green
+}
+
+# -------------------------------
+# MERGE-ONLY MODE (new)
+# -------------------------------
+if ($MergeOnly) {
+  Write-Host "MergeOnly enabled: skipping Datadog pulls; merging existing checkpoints..." -ForegroundColor Yellow
+
+  $dailyFiles = Get-ChildItem $checkpointFolder -Filter "$queryName-$Period-*.csv" -File |
+    Sort-Object Name |
+    Select-Object -ExpandProperty FullName
+
+  if (-not $dailyFiles -or $dailyFiles.Count -eq 0) {
+    Write-Warning "No daily checkpoint CSVs found in: $checkpointFolder"
+    Exit 1
+  }
+
+  Merge-DailyCheckpoints `
+    -DailyFiles $dailyFiles `
+    -OutFile $outfile `
+    -WindowFromSlashes $windowFromSlashes `
+    -WindowToSlashes $windowToSlashes
+
+  Copy-Item $outfile -Destination $outfileLatest -Force
+  Write-Host "Done. Final: $outfileLatest" -ForegroundColor Green
+  Exit 0
+}
+
 # -------------------------------
 # PER-DAY LOOP (new)
 # -------------------------------
@@ -292,15 +421,14 @@ if ($dailyFiles.Count -eq 0) {
 # -------------------------------
 Write-Host "Merging daily checkpoints into final outputs..." -ForegroundColor Green
 
-Import-Csv ($dailyFiles.ToArray()) |
-  Sort-Object icn, csp |
-  Group-Object icn, csp |
-  ForEach-Object { $_.Group | Select-Object -First 1 } |
-  Select-Object @{Name='fromDate';Expression={$windowFromSlashes}},
-                @{Name='toDate';Expression={$windowToSlashes}},
-                icn,
-                csp |
-  Export-Csv $outfile -NoTypeInformation
+$dailyFiles = $dailyFiles.ToArray()  # ensure string[]
+
+Merge-DailyCheckpoints `
+  -DailyFiles $dailyFiles `
+  -OutFile $outfile `
+  -WindowFromSlashes $windowFromSlashes `
+  -WindowToSlashes $windowToSlashes
+
 
 Copy-Item $outfile -Destination $outfileLatest -Force
 
