@@ -36,7 +36,7 @@ $applicationKey = 'UPDATE'
 
 # Query retained from OG
 $queryName = "mobileUsers"
-$query = "service:vets-api AND @message_content:*SignInController*callback"
+$query = "service:vets-api AND (@message_content:*SignInController*callback OR @message_content:*SignInController*refresh*)"
 $limit = 1000
 
 # -------------------------------
