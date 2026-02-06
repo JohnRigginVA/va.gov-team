@@ -34,7 +34,7 @@ Directory system will parse this section to display team member contact informat
 #### Design Lead
 
 - **Name:** John Riggin
-- **GitHub:** tbd
+- **GitHub:** [@JohnRigginVA](https://github.com/JohnRigginVA)
 - **Role:** VA Design/Research Lead
 
 #### Contractor Product Manager
